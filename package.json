@@ -1,0 +1,11 @@
+{
+  "name": "izumi-server",
+  "private": true,
+  "description": "API tài khoản, nickname và lịch sử học của Izumi Study",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
