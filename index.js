@@ -19,7 +19,7 @@ const STUDY_KEYS = [
   "bjtGameFrom", "n3GameFrom", "kanjiGameFrom",
   "bjtGameTo", "n3GameTo", "kanjiGameTo",
   "bjtEnrolled", "n3Enrolled", "kanjiEnrolled",
-  "studyHistory", "dailyStreak", "grammarProgress", "learnedItems"
+  "studyHistory", "dailyStreak", "grammarProgress", "learnedItems", "hardReminders"
 ];
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -64,6 +64,28 @@ function hasLearning(study) {
     if (value && typeof value === "object" && Object.keys(value).length) return true;
   }
   return false;
+}
+function asHistory(value) {
+  const data = parseMaybe(value);
+  return Array.isArray(data) ? data : [];
+}
+function historySignature(item) {
+  if (!item || typeof item !== "object") return "";
+  const words = Array.isArray(item.items) ? item.items.map(entry => entry && (entry.id + ":" + (entry.term || ""))).join(",") : "";
+  return [item.date, item.time, item.kind, item.type, item.count, item.score, words].join("|");
+}
+function mergeHistoryLists(prev, next) {
+  const seen = new Set();
+  const out = [];
+  for (const item of [...asHistory(next), ...asHistory(prev)]) {
+    if (!item || typeof item !== "object") continue;
+    const sig = historySignature(item);
+    if (!sig || seen.has(sig)) continue;
+    seen.add(sig);
+    out.push(item);
+  }
+  out.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.time || "").localeCompare(String(a.time || "")));
+  return out.slice(0, 300);
 }
 function studyStats(study) {
   const saved = study || {};
@@ -318,9 +340,12 @@ async function handleApi(req, res, url) {
     const user = requireUser(db, req, res);
     if (!user) return;
     const body = await readBody(req);
-    const next = Object.assign({}, db.study[user.id] || {});
-    Object.assign(next, cleanStudy(body.study));
-    db.study[user.id] = next;
+    const prev = db.study[user.id] || {};
+    const incoming = cleanStudy(body.study);
+    const merged = mergeHistoryLists(prev.studyHistory, incoming.studyHistory);
+    if (merged.length) incoming.studyHistory = JSON.stringify(merged);
+    else delete incoming.studyHistory;
+    db.study[user.id] = Object.assign({}, prev, incoming);
     saveDb(db);
     return send(res, 200, { ok: true });
   }
